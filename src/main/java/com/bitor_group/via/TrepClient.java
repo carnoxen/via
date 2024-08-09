@@ -3,7 +3,6 @@ package com.bitor_group.via;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
-import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.stereotype.Component;
 
 import com.refinitiv.ema.access.AckMsg;
@@ -34,42 +33,43 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @Slf4j
 public class TrepClient implements OmmConsumerClient {
     private long handle = -1;
-    private StreamBridge streamBridge;
     private TrepConfiguration trepConfiguration;
     private OmmConsumer consumer;
+    private BlockingQueue<String> queue;
     private List<String> columns;
     private Map<String, CSVRecord> rows;
     private Map<String, Map<String, String>> recordMap = new ConcurrentHashMap<>();
 
-    public TrepClient(StreamBridge streamBridge, TrepConfiguration trepConfiguration) {
-        this.streamBridge = streamBridge;
+    public TrepClient(TrepConfiguration trepConfiguration) {
         this.trepConfiguration = trepConfiguration;
         this.consumer = EmaFactory.createOmmConsumer(EmaFactory.createOmmConsumerConfig()
                 .host(this.trepConfiguration.getHost())
                 .username(this.trepConfiguration.getUsername()));
     }
 
-    public void start() {
-        try (
-                var reader = Files.newBufferedReader(Paths.get(this.trepConfiguration.getRecord()),
-                        StandardCharsets.UTF_8)) {
+    public void start(BlockingQueue<String> queue) {
+        try (var reader = Files.newBufferedReader(Paths.get(this.trepConfiguration.getRecord()),
+                StandardCharsets.UTF_8)) {
+            this.queue = queue;
             var inputFormat = CSVFormat.RFC4180.builder()
                     .setHeader()
+                    .setCommentMarker('#')
                     .setSkipHeaderRecord(true)
                     .build().parse(reader);
-            this.columns = CSVFormat.RFC4180.builder().build().parse(reader).getHeaderNames();
+            this.columns = inputFormat.getHeaderNames();
             inputFormat
-                .forEach(x -> this.rows.put(x.get("RIC"), x));
+                    .forEach(x -> this.rows.put(x.get("RIC"), x));
 
             OmmArray array = EmaFactory.createOmmArray();
             this.rows.keySet()
-                .forEach(x -> array.add(EmaFactory.createOmmArrayEntry().ascii(x)));
+                    .forEach(x -> array.add(EmaFactory.createOmmArrayEntry().ascii(x)));
 
             ElementList batch = EmaFactory.createElementList();
             batch.add(EmaFactory.createElementEntry().array(EmaRdm.ENAME_BATCH_ITEM_LIST, array));
@@ -79,14 +79,12 @@ public class TrepClient implements OmmConsumerClient {
                     .payload(batch), this);
 
         } catch (Exception e) {
-            // TODO: handle exception
+            log.error("INPUT FORMAT ERROR:", e);
         }
     }
 
     public void close() {
-        if (this.handle != -1) {
-            this.consumer.unregister(this.handle);
-        }
+        this.consumer.unregister(this.handle);
     }
 
     @Override
@@ -98,8 +96,10 @@ public class TrepClient implements OmmConsumerClient {
 
         log.info("Item State: " + refreshMsg.state());
 
-        if (DataType.DataTypes.FIELD_LIST == refreshMsg.payload().dataType())
+        if (DataType.DataTypes.FIELD_LIST == refreshMsg.payload().dataType()) {
+            this.recordMap.putIfAbsent(itemName, new ConcurrentHashMap<>());
             decode(itemName, refreshMsg.payload().fieldList());
+        }
     }
 
     @Override
@@ -109,32 +109,30 @@ public class TrepClient implements OmmConsumerClient {
         log.info("Item Name: {}", itemName);
         log.info("Service Name: {}", serviceName);
 
-        if (DataType.DataTypes.FIELD_LIST == updateMsg.payload().dataType())
+        if (DataType.DataTypes.FIELD_LIST == updateMsg.payload().dataType()) {
+            this.recordMap.putIfAbsent(itemName, new ConcurrentHashMap<>());
             decode(itemName, updateMsg.payload().fieldList());
+        }
     }
 
     @Override
     public void onStatusMsg(StatusMsg statusMsg, OmmConsumerEvent consumerEvent) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'onStatusMsg'");
+        log.info("Unsupported msg: STA");
     }
 
     @Override
     public void onGenericMsg(GenericMsg genericMsg, OmmConsumerEvent consumerEvent) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'onGenericMsg'");
+        log.info("Unsupported msg: GEN");
     }
 
     @Override
     public void onAckMsg(AckMsg ackMsg, OmmConsumerEvent consumerEvent) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'onAckMsg'");
+        log.info("Unsupported msg: ACK");
     }
 
     @Override
     public void onAllMsg(Msg msg, OmmConsumerEvent consumerEvent) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'onAllMsg'");
+        log.info("Unsupported msg: ALL");
     }
 
     private void decode(String itemName, FieldList fieldList) {
@@ -179,10 +177,9 @@ public class TrepClient implements OmmConsumerClient {
                         break;
                 }
 
-                log.info("Fid: {} Name = {} DataType: {} Value: {}", 
-                    fieldEntry.fieldId(), fieldName, DataType.asString(fieldEntry.load().dataType()), data);
+                log.info("  Fid: {} Name: {} DataType: {} Value: {}",
+                        fieldEntry.fieldId(), fieldName, DataType.asString(fieldEntry.load().dataType()), data);
 
-                this.recordMap.putIfAbsent(itemName, new ConcurrentHashMap<>());
                 this.recordMap.get(itemName).put("@" + fieldName, data);
             }
         }
@@ -195,33 +192,31 @@ public class TrepClient implements OmmConsumerClient {
     private void sendData() {
         StringWriter writer = new StringWriter();
         CSVFormat csvFormat = CSVFormat.DEFAULT.builder()
-            .setHeader(this.columns.toArray(new String[0]))
-            .build();
+                .setHeader(this.columns.toArray(String[]::new))
+                .build();
 
         try (final CSVPrinter printer = new CSVPrinter(writer, csvFormat)) {
             this.rows.entrySet().forEach(x -> {
                 String itemName = x.getKey();
                 var record = x.getValue();
                 try {
-                    for (var col: columns) {
-                        String target = record.get(col);
-                        if (target.startsWith("@")) {
-                            target = this.recordMap.get(itemName).get(target);
-                        }
-
-                        printer.print(target);
-                    }
-                    printer.println();
+                    printer.printRecord(record.stream()
+                    .map(r -> (r.startsWith("@")) ? recordMap.get(itemName).get(r) : r));
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    log.error("CSV PRINTER FAILED: ", e);
+                    log.error("See the next record");
                 }
             });
+        } catch (Exception e) {
+            log.error("CSV PRINTER CONSTRUCTION FAILED: ", e);
         }
-        catch (Exception e) {
+
+        try {
+            queue.put(writer.toString());
+        } catch (InterruptedException e) {
+            // TODO Auto-generated catch block
             e.printStackTrace();
         }
-        
-        this.streamBridge.send("trep-sinc", writer.toString());
         this.recordMap.clear();
     }
 
