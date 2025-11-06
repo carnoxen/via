@@ -1,0 +1,13 @@
+plugins {
+	id "java"
+    id "spring-commons"
+}
+
+group = 'com.bitorgroup'
+version = '0.0.1-SNAPSHOT'
+
+dependencies {
+	implementation project(':via-commons')
+	implementation 'org.apache.commons:commons-csv:1.11.0'
+	implementation 'com.refinitiv.ema:ema:3.8.0.0'
+}

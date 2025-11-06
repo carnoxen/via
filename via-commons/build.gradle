@@ -1,0 +1,11 @@
+plugins {
+    id "java-library"
+    id 'spring-commons'
+}
+
+group = 'com.bitorgroup'
+version = '0.0.1-SNAPSHOT'
+
+bootJar {
+    enabled = false
+}

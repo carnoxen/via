@@ -1,0 +1,11 @@
+plugins {
+    id "java"
+    id 'spring-commons'
+}
+
+group = 'com.bitorgroup'
+version = '0.0.1-SNAPSHOT'
+
+dependencies {
+	implementation project(':via-commons')
+}

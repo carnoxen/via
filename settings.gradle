@@ -1,1 +1,5 @@
 rootProject.name = 'via'
+
+include("via-commons")
+include("via-trep")
+include("via-smbs")
