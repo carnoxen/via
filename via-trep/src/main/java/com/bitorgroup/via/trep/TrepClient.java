@@ -5,6 +5,8 @@ import org.apache.commons.csv.CSVPrinter;
 import org.apache.commons.csv.CSVRecord;
 import org.springframework.stereotype.Component;
 
+import com.bitorgroup.via.common.TrepMessage;
+import com.bitorgroup.via.common.ViaClient;
 import com.refinitiv.ema.access.AckMsg;
 import com.refinitiv.ema.access.Data;
 import com.refinitiv.ema.access.DataType;
@@ -39,10 +41,10 @@ import java.util.function.Consumer;
 
 @Component
 @Slf4j
-public class TrepClient implements OmmConsumerClient, Consumer<FluxSink<String>> {
+public class TrepClient implements OmmConsumerClient, ViaClient<TrepMessage> {
     private long handle = -1;
     private TrepConfiguration trepConfiguration;
-    private FluxSink<String> emitter;
+    private FluxSink<TrepMessage> emitter;
     private OmmConsumer consumer;
     private List<String> columns;
     private Map<String, CSVRecord> rows;
@@ -188,7 +190,7 @@ public class TrepClient implements OmmConsumerClient, Consumer<FluxSink<String>>
     }
 
     @Override
-    public void accept(FluxSink<String> emitter) {
+    public void accept(FluxSink<TrepMessage> emitter) {
         this.emitter = emitter;
         try (var reader = Files.newBufferedReader(Paths.get(this.trepConfiguration.getRecord()),
                 StandardCharsets.UTF_8)) {

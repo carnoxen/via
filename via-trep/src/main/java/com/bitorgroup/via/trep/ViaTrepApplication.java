@@ -8,6 +8,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.Scheduled;
 
+import com.bitorgroup.via.common.TrepMessage;
+
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
@@ -28,9 +30,9 @@ public class ViaTrepApplication {
 
     @Bean
     @Scheduled(cron = "${start_at}")
-    public Supplier<Flux<String>> execute() {
+    public Supplier<Flux<TrepMessage>> execute() {
 		return () -> Flux
-				.<String>create(this.client)
+				.<TrepMessage>create(this.client)
 				.retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(1)))
 				.subscribeOn(Schedulers.boundedElastic())
 				.share();

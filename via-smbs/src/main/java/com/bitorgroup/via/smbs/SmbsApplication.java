@@ -7,6 +7,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
+import com.bitorgroup.via.common.SmbsMessage;
+
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 import reactor.util.retry.Retry;
@@ -24,9 +26,9 @@ public class SmbsApplication {
 	}
 
 	@Bean
-	public Supplier<Flux<String>> smbs() {
+	public Supplier<Flux<SmbsMessage>> smbs() {
 		return () -> Flux
-				.<String>create(this.client)
+				.<SmbsMessage>create(this.client)
 				.retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(1)))
 				.subscribeOn(Schedulers.boundedElastic())
 				.share();

@@ -9,6 +9,8 @@ import java.util.function.Consumer;
 
 import org.springframework.stereotype.Component;
 
+import com.bitorgroup.via.common.SmbsMessage;
+import com.bitorgroup.via.common.ViaClient;
 import com.bitorgroup.via.smbs.handler.*;
 
 import lombok.Data;
@@ -18,14 +20,14 @@ import reactor.core.publisher.FluxSink;
 @Data
 @Slf4j
 @Component
-public class SmbsClient implements Consumer<FluxSink<String>> {
+public class SmbsClient implements ViaClient<SmbsMessage> {
     SmbsConfiguration configuration;
     SmbsConnectHandler handler;
     SmbsSequenceRepository repository;
     
     AsynchronousSocketChannel channel;
     ByteBuffer buffer = ByteBuffer.allocate(2048);
-    FluxSink<String> emitter;
+    FluxSink<SmbsMessage> emitter;
 
     public SmbsClient(
         SmbsConfiguration configuration, 
@@ -37,7 +39,7 @@ public class SmbsClient implements Consumer<FluxSink<String>> {
     }
 
     @Override
-    public void accept(FluxSink<String> emitter) {
+    public void accept(FluxSink<SmbsMessage> emitter) {
         this.emitter = emitter;
         var uri = URI.create(this.configuration.getHost());
         var hostname = uri.getHost();
