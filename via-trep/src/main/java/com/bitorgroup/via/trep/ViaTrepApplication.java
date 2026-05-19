@@ -33,7 +33,7 @@ public class ViaTrepApplication {
     public Supplier<Flux<TrepMessage>> execute() {
 		return () -> Flux
 				.<TrepMessage>create(this.client)
-				.retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(1)))
+				.retry()
 				.subscribeOn(Schedulers.boundedElastic())
 				.share();
     }
