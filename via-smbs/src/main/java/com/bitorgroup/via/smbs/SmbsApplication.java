@@ -29,7 +29,7 @@ public class SmbsApplication {
 	public Supplier<Flux<SmbsMessage>> smbs() {
 		return () -> Flux
 				.<SmbsMessage>create(this.client)
-				.retryWhen(Retry.fixedDelay(3, Duration.ofSeconds(1)))
+				.retry()
 				.subscribeOn(Schedulers.boundedElastic())
 				.share();
 	}
